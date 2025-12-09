@@ -240,42 +240,54 @@ def api_history(card_id):
 
 # Study: render study page with due cards
 # Study: render study page with flexible filters (due/all/subject/tag)
+
 @app.route('/study')
 def study_page():
     """
+    Study page with filters.
     Query params:
-      - mode=all  -> include all cards
-      - subject=...  -> filter by subject (case-insensitive)
-      - tag=...      -> filter by tag substring (case-insensitive)
-      - limit=NN     -> max cards to return (default 200)
+      - mode=all        -> intended to include all non-snoozed cards (cards with next_review==None OR next_review <= now)
+      - subject=...     -> filter by subject (case-insensitive)
+      - tag=...         -> filter by tag substring (case-insensitive)
+      - limit=NN        -> max cards to return (default 200)
+      - show_snoozed=1  -> if present and truthy, include snoozed cards (next_review in future)
     """
-    mode = request.args.get('mode', '').lower()
-    subject = request.args.get('subject', '').strip()
-    tag = request.args.get('tag', '').strip()
+
+    mode = (request.args.get('mode') or '').lower()
+    subject = (request.args.get('subject') or '').strip()
+    tag = (request.args.get('tag') or '').strip()
+    show_snoozed = request.args.get('show_snoozed')
     try:
         limit = int(request.args.get('limit', 200))
     except Exception:
         limit = 200
 
+    now = datetime.utcnow()
+
+    # Base query: always start from Flashcard table
     q = Flashcard.query
 
-    if mode != 'all':
-        # default: only due cards
-        now = datetime.utcnow()
+    # By default (and for mode='all'), exclude snoozed cards:
+    # include only those with next_review is NULL (never scheduled) OR next_review <= now (due)
+    # If the caller explicitly requests show_snoozed=1, include snoozed cards as well.
+    if not show_snoozed:
         q = q.filter((Flashcard.next_review == None) | (Flashcard.next_review <= now))
 
-    # apply subject/tag filters if provided
+    # If you want a special 'only due' behavior it's already covered by above.
+    # Keep subject/tag filters:
     if subject:
         q = q.filter(Flashcard.subject.ilike(f"%{subject}%"))
     if tag:
         q = q.filter(Flashcard.tags.ilike(f"%{tag}%"))
 
+    # Order due cards first (nulls first), then by created time
     cards = q.order_by(Flashcard.next_review.asc().nullsfirst(), Flashcard.created_at.asc()).limit(limit).all()
+
+    # Convert to dicts for the template (ensure your to_dict includes image_filename if needed)
     cards_d = [c.to_dict(include_meta=True) for c in cards]
 
-    # supply list of available subjects & tags (for client-side selector)
+    # supply list of available subjects & tags (for client-side selector) — unchanged behavior
     all_subjects = sorted({(c.subject or "").strip() for c in Flashcard.query.distinct(Flashcard.subject).all() if (c.subject or "").strip()})
-    # tags: split by comma and collect unique tokens
     tags_set = set()
     for c in Flashcard.query.all():
         if c.tags:
@@ -285,11 +297,18 @@ def study_page():
                     tags_set.add(t)
     all_tags = sorted(tags_set)
 
+    # ensure next_review is stringified safely for JSON
     for c in cards_d:
         c['next_review'] = c['next_review'][:19] if c.get('next_review') else None
         c['question_short'] = (c['question'][:140] + '...') if c.get('question') and len(c['question'])>140 else c.get('question')
 
-    return render_template('study.html', cards=cards_d, subjects=all_subjects, tags=all_tags, selected_mode=mode, sel_subject=subject, sel_tag=tag)
+    return render_template('study.html',
+                           cards=cards_d,
+                           subjects=all_subjects,
+                           tags=all_tags,
+                           selected_mode=mode,
+                           sel_subject=subject,
+                           sel_tag=tag)
 
 
 @app.route('/study/review', methods=['POST'])

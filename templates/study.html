@@ -35,6 +35,13 @@
               {% endfor %}
             </select>
 
+            <!-- Show snoozed checkbox -->
+            <label class="flex items-center text-sm text-slate-300 ml-2">
+              <input id="showSnoozed" type="checkbox" class="mr-2" {% if request.args.get('show_snoozed') %}checked{% endif %}>
+              Show snoozed cards
+            </label>
+
+
             <button id="applyFilters" class="ml-2 px-3 py-1 bg-indigo-600 rounded text-sm text-white">Apply</button>
           </div>
         </div>
@@ -461,5 +468,53 @@ function loadSession(cfg){
 }
 
 loadSession(currentSessionConfig);
+
+// Ensure DOM is ready — if your script already runs after DOM loaded, you can paste directly
+(function(){
+  const applyBtn = document.getElementById('applyFilters');
+  const showSnoozedCheckbox = document.getElementById('showSnoozed');
+
+  // Apply button: include checkbox state when applying filters
+  if (applyBtn) {
+    applyBtn.addEventListener('click', () => {
+      const mode = document.getElementById('modeSel').value;
+      const subj = document.getElementById('subjectSel').value;
+      const tg = document.getElementById('tagSel').value;
+      const params = new URLSearchParams();
+      if (mode) params.set('mode', mode);
+      if (subj) params.set('subject', subj);
+      if (tg) params.set('tag', tg);
+      if (showSnoozedCheckbox && showSnoozedCheckbox.checked) params.set('show_snoozed', '1');
+      // navigate
+      const qs = params.toString();
+      window.location = window.location.pathname + (qs ? ('?' + qs) : '');
+    });
+  }
+
+  // Toggle checkbox: reload immediately with current filters + new show_snoozed state
+  if (showSnoozedCheckbox) {
+    showSnoozedCheckbox.addEventListener('change', () => {
+      const params = new URLSearchParams(window.location.search);
+      // preserve other filters already in URL (mode/subject/tag/limit)
+      // update show_snoozed according to checkbox
+      if (showSnoozedCheckbox.checked) params.set('show_snoozed', '1');
+      else params.delete('show_snoozed');
+
+      // keep existing mode/subject/tag if present in current URL (so toggling doesn't lose them)
+      const keepKeys = ['mode','subject','tag','limit'];
+      const newParams = new URLSearchParams();
+      keepKeys.forEach(k => {
+        const v = params.get(k);
+        if (v !== null) newParams.set(k, v);
+      });
+      // ensure show_snoozed is preserved
+      if (params.get('show_snoozed')) newParams.set('show_snoozed', params.get('show_snoozed'));
+
+      const qs = newParams.toString();
+      window.location = window.location.pathname + (qs ? ('?' + qs) : '');
+    });
+  }
+})();
+
 </script>
 {% endblock %}
