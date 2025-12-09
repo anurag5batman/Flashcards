@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- Tailwind included in base -->
+<div class="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-900 to-slate-800 p-6">
+  <div class="w-full max-w-6xl">
+    <!-- Header: split into two rows so controls don't overflow -->
+    <div class="mb-6">
+      <!-- top row: left controls -->
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div class="flex items-center gap-3 flex-wrap">
+          <a href="{{ url_for('create_page') }}" class="px-3 py-1 rounded border text-sm text-slate-200">Exit Study Mode</a>
+          <div class="text-slate-300 text-sm">Study Mode</div>
+
+          <!-- compact mode & filters group -->
+          <div class="ml-2 flex items-center gap-2 text-sm">
+            <label class="text-slate-300">Mode</label>
+            <select id="modeSel" class="bg-slate-800 border text-slate-200 p-1 rounded text-sm">
+              <option value="">Due (default)</option>
+              <option value="all" {% if selected_mode=='all' %}selected{% endif %}>All cards</option>
+            </select>
+
+            <label class="text-slate-300 ml-2">Subject</label>
+            <select id="subjectSel" class="bg-slate-800 border text-slate-200 p-1 rounded text-sm">
+              <option value="">Any</option>
+              {% for s in subjects %}
+              <option value="{{ s }}" {% if sel_subject==s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+
+            <label class="text-slate-300 ml-2">Tag</label>
+            <select id="tagSel" class="bg-slate-800 border text-slate-200 p-1 rounded text-sm">
+              <option value="">Any</option>
+              {% for t in tags %}
+              <option value="{{ t }}" {% if sel_tag==t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+
+            <button id="applyFilters" class="ml-2 px-3 py-1 bg-indigo-600 rounded text-sm text-white">Apply</button>
+          </div>
+        </div>
+
+        <!-- top row: right quick-controls (progress / shuffle / restart) -->
+        <div class="flex items-center gap-2">
+          <div id="progress" class="text-slate-300 text-sm mr-2">0 / 0</div>
+          <button id="shuffleBtn" class="px-3 py-1 border rounded text-sm text-slate-200">Shuffle</button>
+          <button id="replayBtn" class="px-3 py-1 border rounded text-sm text-slate-200" title="Restart session">Restart</button>
+        </div>
+      </div>
+
+      <!-- bottom row: autoplay controls (wraps nicely) -->
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-2 text-sm text-slate-200">
+          <label class="mr-1">Auto-Play</label>
+          <button id="autoplayToggle" class="px-2 py-1 border rounded bg-slate-800">Off</button>
+          <label class="ml-2">Flip after</label>
+          <input id="flipDelay" type="number" min="1" value="3" class="w-14 p-1 rounded bg-slate-800 text-white text-sm" />
+          <label class="ml-1">s · Show</label>
+          <input id="advanceDelay" type="number" min="1" value="2" class="w-14 p-1 rounded bg-slate-800 text-white text-sm" />
+          <label class="ml-1">s</label>
+          <button id="playPause" class="ml-2 px-2 py-1 border rounded bg-slate-800">Play</button>
+        </div>
+
+        <!-- optional small-help / counts placed to the right on larger screens but will wrap on small -->
+        <div class="ml-auto text-sm text-slate-300">Tip: click card or press Space to reveal</div>
+      </div>
+    </div>
+
+    <!-- card area -->
+    <div class="relative">
+      <button id="prevBtn" class="absolute left-0 top-1/2 -translate-y-1/2 bg-transparent border rounded-full w-10 h-10 text-slate-200 hover:bg-slate-800">‹</button>
+
+      <div id="cardContainer" class="mx-auto w-full max-w-4xl">
+        <!-- simple (no-3D) card: front/back toggled by JS -->
+        <div id="flipWrap" class="relative w-full h-80 mx-auto cursor-pointer">
+          <div id="cardBox" class="w-full h-full rounded-xl shadow-2xl bg-gradient-to-b from-slate-900 to-slate-800 text-white p-8 flex flex-col justify-center items-center">
+            <!-- front face -->
+            <div id="frontFace" class="w-full h-full flex flex-col justify-center items-center">
+              <div class="text-sm text-indigo-300 tracking-wider mb-4 uppercase">Question</div>
+              <div id="qText" class="text-3xl font-semibold leading-tight text-center"></div>
+              <div class="mt-6 text-xs text-slate-400">Click card or press space to reveal</div>
+            </div>
+            <!-- back face (hidden initially) -->
+            <div id="backFace" class="w-full h-full flex flex-col justify-center items-center hidden bg-gradient-to-b from-violet-500 to-indigo-500 rounded-xl p-8">
+              <div class="text-sm text-white/90 tracking-wider mb-4 uppercase">Answer</div>
+              <div id="aText" class="text-3xl font-semibold leading-tight text-center"></div>
+              <div class="mt-6 text-xs text-white/80">Mark known/unknown or snooze</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button id="nextBtn" class="absolute right-0 top-1/2 -translate-y-1/2 bg-transparent border rounded-full w-10 h-10 text-slate-200 hover:bg-slate-800">›</button>
+    </div>
+
+    <!-- controls -->
+    <div class="mt-6 flex justify-center gap-4">
+      <button id="knownBtn" class="px-6 py-2 bg-green-600 rounded text-white">Known</button>
+      <button id="unknownBtn" class="px-6 py-2 bg-red-600 rounded text-white">Unknown</button>
+
+      <div class="relative">
+        <button id="snoozeMenuBtn" class="px-4 py-2 border rounded text-slate-200">Snooze ▾</button>
+        <div id="snoozeMenu" class="absolute right-0 mt-2 bg-slate-900 border rounded shadow p-2 hidden">
+          <button class="snoozeOpt px-3 py-1 block w-full text-left" data-days="1">1 day</button>
+          <button class="snoozeOpt px-3 py-1 block w-full text-left" data-days="3">3 days</button>
+          <button class="snoozeOpt px-3 py-1 block w-full text-left" data-days="7">7 days</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- summary modal (unchanged) -->
+<div id="summaryModal" class="fixed inset-0 hidden items-center justify-center z-50 bg-black/40">
+  <div class="bg-slate-900 rounded-xl p-6 w-full max-w-3xl text-white">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-lg font-semibold">Session Summary</h3>
+      <button id="closeSummary" class="px-2 py-1 border rounded">Close</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div><canvas id="barChart" height="200"></canvas></div>
+      <div><canvas id="lineChart" height="200"></canvas></div>
+    </div>
+    <div class="mt-4 text-sm text-slate-300">
+      <div id="summaryText"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="summaryRestart" class="px-3 py-1 bg-indigo-600 rounded">Restart Session</button>
+        <a id="summaryDashboard" href="{{ url_for('dashboard') }}" class="px-3 py-1 border rounded text-slate-200">Open Dashboard</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+/* Simple card style (no 3D flip) */
+#cardBox { transition: transform 0.18s ease, box-shadow 0.18s ease; border-radius: 12px; }
+#cardBox:hover { transform: translateY(-6px); }
+#backFace.hidden { display: none; }
+#frontFace.hidden { display: none; }
+</style>
+
+<script>
+/* Utilities */
+function escapeHtml(s){ if(!s) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
+
+/* Data + state */
+let cards = {{ cards|tojson }};
+let idx = 0;
+let sessionStats = [];
+let flipTimer = null;
+let advanceTimer = null;
+let autoplayEnabled = false;
+let autoplayRunning = false; // play/pause state
+
+// defaults (in seconds)
+function getFlipDelay(){ return Math.max(1, parseInt(document.getElementById('flipDelay').value || 3, 10)); }
+function getAdvanceDelay(){ return Math.max(1, parseInt(document.getElementById('advanceDelay').value || 2, 10)); }
+
+const progressEl = document.getElementById('progress');
+const frontFace = document.getElementById('frontFace');
+const backFace = document.getElementById('backFace');
+const flipWrap = document.getElementById('flipWrap');
+
+function showFront(){ frontFace.classList.remove('hidden'); backFace.classList.add('hidden'); }
+function showBack(){ frontFace.classList.add('hidden'); backFace.classList.remove('hidden'); }
+function isBackShown(){ return !backFace.classList.contains('hidden'); }
+
+/* Render card content */
+function renderCard(i){
+  const n = cards.length;
+  if(n === 0){
+    document.getElementById('qText').innerText = "No cards to study — nice!";
+    document.getElementById('aText').innerText = "";
+    progressEl.innerText = '0 / 0';
+    stopAutoplayTimers();
+    endSession();
+    return;
+  }
+  idx = ((i % n) + n) % n;
+  showFront();
+  const c = cards[idx];
+  document.getElementById('qText').innerHTML = escapeHtml(c.question || '');
+  document.getElementById('aText').innerHTML = escapeHtml(c.answer || '');
+  progressEl.innerText = `${idx+1} / ${n}`;
+
+  // restart autoplay timers if enabled
+  restartAutoplayIfNeeded();
+}
+
+/* Navigation helpers */
+document.getElementById('nextBtn').addEventListener('click', ()=> { manualAction(); renderCard(idx+1); });
+document.getElementById('prevBtn').addEventListener('click', ()=> { manualAction(); renderCard(idx-1); });
+document.getElementById('shuffleBtn').addEventListener('click', ()=> { manualAction(); shuffleCards(); renderCard(0); });
+document.getElementById('replayBtn').addEventListener('click', ()=> { manualAction(); loadSession(currentSessionConfig); });
+
+/* CLICK & KEYBOARD: simple reliable handlers */
+/* Click anywhere on flipWrap (ignores clicks on controls) toggles show/hide */
+if (flipWrap) {
+  flipWrap.addEventListener('click', (ev) => {
+    // ignore clicks on buttons/inputs/selects inside header/controls
+    if (ev.target.closest('button') || ev.target.closest('input') || ev.target.closest('select')) return;
+    manualAction();
+    toggleFlip();
+  });
+}
+
+/* Keyboard controls */
+document.addEventListener('keydown', (e) => {
+  const active = document.activeElement;
+  const tag = active ? active.tagName.toLowerCase() : '';
+  const isFormCtrl =
+    tag === 'input' ||
+    tag === 'textarea' ||
+    tag === 'select' ||
+    tag === 'button' ||
+    active?.isContentEditable;
+
+  // SPACE → reveal / hide
+  if (e.code === 'Space') {
+    if (isFormCtrl) return; // don't flip while editing fields
+    e.preventDefault();
+    manualAction();
+    toggleFlip();
+    return;
+  }
+
+  // Arrow keys
+  if (e.key === 'ArrowRight') {
+    manualAction();
+    renderCard(idx + 1);
+  }
+  if (e.key === 'ArrowLeft') {
+    manualAction();
+    renderCard(idx - 1);
+  }
+});
+
+/* toggleFlip: show back if front visible, else show front */
+function toggleFlip(){
+  if(isBackShown()) showFront(); else showBack();
+  // cancel autoplay timers so user can interact
+  manualAction();
+}
+
+/* shuffle */
+function shuffleCards(){
+  for(let i=cards.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [cards[i], cards[j]] = [cards[j], cards[i]];
+  }
+}
+
+/* Server review call (same endpoint) */
+async function sendReview(cardId, action, snooze_days=0){
+  try{
+    const res = await fetch("{{ url_for('study_review') }}", {
+      method: "POST",
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({card_id: cardId, action: action, snooze_days: snooze_days})
+    });
+    return await res.json();
+  }catch(e){
+    console.error("review post failed", e);
+    return { error: String(e) };
+  }
+}
+
+/* Session actions (Known/Unknown/Snooze) */
+document.getElementById('knownBtn').addEventListener('click', async ()=>{
+  if(cards.length===0) return;
+  manualAction();
+  const c = cards[idx];
+  sessionStats.push({action:'known', card_id:c.id, ts: Date.now()});
+  await sendReview(c.id, 'known');
+  cards.splice(idx,1);
+  if(cards.length===0){ renderCard(0); return; }
+  renderCard(idx);
+});
+
+document.getElementById('unknownBtn').addEventListener('click', async ()=>{
+  if(cards.length===0) return;
+  manualAction();
+  const c = cards[idx];
+  sessionStats.push({action:'unknown', card_id:c.id, ts: Date.now()});
+  await sendReview(c.id, 'unknown');
+  const moved = cards.splice(idx,1)[0];
+  cards.push(moved);
+  if(idx >= cards.length) idx = 0;
+  renderCard(idx);
+});
+
+document.getElementById('snoozeMenuBtn').addEventListener('click', ()=> { document.getElementById('snoozeMenu').classList.toggle('hidden'); });
+document.querySelectorAll('.snoozeOpt').forEach(b=>{
+  b.addEventListener('click', async (ev)=>{
+    if(cards.length===0) return;
+    manualAction();
+    const days = parseInt(ev.currentTarget.dataset.days);
+    const c = cards[idx];
+    sessionStats.push({action:'snooze', card_id:c.id, snooze_days: days, ts: Date.now()});
+    await sendReview(c.id, 'snooze', days);
+    cards.splice(idx,1);
+    document.getElementById('snoozeMenu').classList.add('hidden');
+    if(cards.length===0){ renderCard(0); return; }
+    renderCard(idx);
+  });
+});
+
+/* Manual action cancels timers and marks autoplay to resume if enabled */
+function manualAction(){
+  stopAutoplayTimers();
+  // if autoplayEnabled and autoplayRunning was true, we will restart timers after a short delay
+}
+
+/* AUTOPLAY: timers management (uses simple toggle show/hide) */
+function startAutoplayTimers(){
+  stopAutoplayTimers();
+  if(!autoplayEnabled || !autoplayRunning || cards.length===0) return;
+  const fd = getFlipDelay();
+  const ad = getAdvanceDelay();
+  flipTimer = setTimeout(()=>{
+    // reveal answer if not already
+    if(!isBackShown()) showBack();
+    // schedule advance
+    advanceTimer = setTimeout(()=>{
+      renderCard(idx+1);
+    }, ad * 1000);
+  }, fd * 1000);
+}
+
+function stopAutoplayTimers(){
+  if(flipTimer){ clearTimeout(flipTimer); flipTimer = null; }
+  if(advanceTimer){ clearTimeout(advanceTimer); advanceTimer = null; }
+}
+
+function restartAutoplayIfNeeded(){
+  stopAutoplayTimers();
+  if(autoplayEnabled && autoplayRunning){
+    // slight delay to avoid immediate flip when user just clicked
+    flipTimer = setTimeout(()=> startAutoplayTimers(), 350);
+  }
+}
+
+/* Autoplay UI: toggle and play/pause */
+document.getElementById('autoplayToggle').addEventListener('click', ()=>{
+  autoplayEnabled = !autoplayEnabled;
+  document.getElementById('autoplayToggle').textContent = autoplayEnabled ? 'On' : 'Off';
+  if(autoplayEnabled && autoplayRunning) restartAutoplayIfNeeded();
+  else stopAutoplayTimers();
+});
+
+document.getElementById('playPause').addEventListener('click', ()=>{
+  autoplayRunning = !autoplayRunning;
+  document.getElementById('playPause').textContent = autoplayRunning ? 'Pause' : 'Play';
+  if(autoplayRunning && autoplayEnabled){
+    restartAutoplayIfNeeded();
+  } else {
+    stopAutoplayTimers();
+  }
+});
+
+// update delays live when user changes inputs
+document.getElementById('flipDelay').addEventListener('change', ()=>{
+  restartAutoplayIfNeeded();
+});
+document.getElementById('advanceDelay').addEventListener('change', ()=>{
+  restartAutoplayIfNeeded();
+});
+
+/* Filters / apply */
+const currentSessionConfig = {mode: "{{ selected_mode or '' }}", subject: "{{ sel_subject or '' }}", tag: "{{ sel_tag or '' }}"};
+document.getElementById('applyFilters').addEventListener('click', ()=>{
+  const mode = document.getElementById('modeSel').value;
+  const subj = document.getElementById('subjectSel').value;
+  const tg = document.getElementById('tagSel').value;
+  const params = new URLSearchParams();
+  if(mode) params.set('mode', mode);
+  if(subj) params.set('subject', subj);
+  if(tg) params.set('tag', tg);
+  window.location = window.location.pathname + '?' + params.toString();
+});
+
+/* Session summary */
+function endSession(){
+  stopAutoplayTimers();
+  // build stats
+  const total = sessionStats.length;
+  const known = sessionStats.filter(s=>s.action==='known').length;
+  const unknown = sessionStats.filter(s=>s.action==='unknown').length;
+  const snoozed = sessionStats.filter(s=>s.action==='snooze').length;
+
+  const labels = [];
+  const retention = [];
+  let cumKnown = 0;
+  sessionStats.forEach((s, i)=>{
+    if(s.action==='known') cumKnown++;
+    labels.push((i+1).toString());
+    retention.push( (cumKnown / (i+1) * 100).toFixed(1) );
+  });
+
+  document.getElementById('summaryModal').classList.remove('hidden');
+  document.getElementById('summaryText').innerText = `Reviewed ${total} events — Known: ${known}, Unknown: ${unknown}, Snoozed: ${snoozed}.`;
+
+  // bar chart
+  const barCtx = document.getElementById('barChart').getContext('2d');
+  if(window._barChart) window._barChart.destroy();
+  window._barChart = new Chart(barCtx, {
+    type: 'bar', data: { labels: ['Known','Unknown','Snoozed'], datasets:[{ data:[known,unknown,snoozed], backgroundColor:['#22c55e','#ef4444','#a78bfa'] }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }
+  });
+
+  // line chart
+  const lineCtx = document.getElementById('lineChart').getContext('2d');
+  if(window._lineChart) window._lineChart.destroy();
+  window._lineChart = new Chart(lineCtx, {
+    type:'line',
+    data:{ labels:labels, datasets:[{ label:'Retention (%)', data:retention, fill:false, borderColor:'#60a5fa', tension:0.2, pointRadius:3 }]},
+    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ min:0, max:100 } } }
+  });
+}
+
+document.getElementById('summaryRestart').addEventListener('click', ()=> {
+  document.getElementById('summaryModal').classList.add('hidden');
+  loadSession(currentSessionConfig);
+});
+document.getElementById('closeSummary').addEventListener('click', ()=> {
+  document.getElementById('summaryModal').classList.add('hidden');
+});
+
+/* load session */
+function loadSession(cfg){
+  sessionStats = [];
+  if(cards.length===0){ renderCard(0); return; }
+  renderCard(0);
+}
+
+loadSession(currentSessionConfig);
+</script>
+{% endblock %}

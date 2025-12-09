@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow">
+  <h2 class="text-xl font-semibold mb-4">Study</h2>
+  {% if card %}
+    <div class="p-4 border rounded bg-slate-50">
+      <div class="text-lg font-medium">Q. {{ card.question|safe }}</div>
+    </div>
+    <div class="mt-3">
+      <button id="showBtn" onclick="document.getElementById('answer').classList.remove('hidden'); this.classList.add('hidden')" class="px-3 py-2 bg-emerald-500 text-white rounded">Show Answer</button>
+    </div>
+    <div id="answer" class="hidden mt-3 p-4 border rounded bg-white">
+      <div class="font-medium">A. {{ card.answer|safe }}</div>
+      <form method="post" class="mt-3 flex gap-2">
+        <input type="hidden" name="card_id" value="{{ card.id }}">
+        <button name="result" value="known" class="px-3 py-2 bg-green-600 text-white rounded">Known</button>
+        <button name="result" value="unknown" class="px-3 py-2 bg-red-600 text-white rounded">Unknown</button>
+        <button name="snooze" value="1" class="px-3 py-2 border rounded">Snooze 1d</button>
+      </form>
+    </div>
+  {% else %}
+    <div>No cards due.</div>
+  {% endif %}
+</div>
+{% endblock %}

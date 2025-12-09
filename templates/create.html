@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+  <h2 class="text-xl font-semibold mb-4">Create Flashcard</h2>
+  <form method="post" action="{{ url_for('add_card') }}">
+    <label class="block mb-2">Question</label>
+    <textarea name="question" rows="4" required class="w-full border p-2 rounded mb-3"></textarea>
+
+    <label class="block mb-2">Answer</label>
+    <textarea name="answer" rows="4" required class="w-full border p-2 rounded mb-3"></textarea>
+
+    <div class="grid md:grid-cols-3 gap-3">
+      <input name="subject" placeholder="Subject" class="border p-2 rounded" />
+      <input name="tags" placeholder="Tags (comma separated)" class="border p-2 rounded" />
+      <select name="difficulty" class="border p-2 rounded">
+        <option value="">Select difficulty</option>
+        <option value="easy">Easy</option>
+        <option value="medium">Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+    </div>
+
+    <div class="mt-6 flex gap-2">
+      <button class="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
+      <a href="{{ url_for('import_page') }}" class="px-4 py-2 border rounded">Import</a>
+    </div>
+  </form>
+
+  <div class="mt-6 text-sm text-slate-600">
+    <div>Total cards in DB: {{ total_cards }}</div>
+    <div class="mt-2">To view a card's review history, use the history API or export the DB and inspect the reviews.</div>
+  </div>
+</div>
+{% endblock %}

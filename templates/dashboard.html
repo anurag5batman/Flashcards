@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-semibold">Dashboard — Recent Cards ({{ limit }})</h2>
+    <div class="text-sm text-slate-500">Total: {{ cards|length }}</div>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full table-auto">
+      <thead class="text-left text-slate-600">
+        <tr>
+          <th class="p-2">Created</th>
+          <th class="p-2">Question</th>
+          <th class="p-2">Subject / Tags</th>
+          <th class="p-2">SRS</th>
+          <th class="p-2">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cards %}
+        <tr class="border-t">
+          <td class="p-2 text-sm text-slate-600">{{ c.created_at[:19] if c.created_at else '' }}</td>
+          <td class="p-2 max-w-xl">{{ c.question|safe }}</td>
+          <td class="p-2">
+            <div>{{ c.subject or '-' }}</div>
+            <div class="text-xs text-slate-500">{{ c.tags or '' }}</div>
+          </td>
+          <td class="p-2">
+            <div class="text-sm">Next: {{ c.next_review[:10] if c.next_review else 'Due' }}</div>
+            <div class="text-sm">Reps: {{ c.reps or 0 }} · E: {{ '%.2f'|format(c.easiness or 2.5) }}</div>
+          </td>
+          <td class="p-2">
+            <a class="px-3 py-1 inline-block text-xs border rounded" href="{{ url_for('history_view', card_id=c.id) }}">History</a>
+            <form id="del{{ c.id }}" method="post" action="{{ url_for('delete_card', card_id=c.id) }}" style="display:inline-block;">
+              <input type="hidden" name="confirm" value="1">
+            </form>
+            <button onclick="if(confirm('Delete this card?')) document.getElementById('del{{ c.id }}').submit();" class="px-3 py-1 bg-red-500 rounded text-white">Delete</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="p-4 text-slate-500">No cards found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-4 text-sm text-slate-500">
+    Want more? Use `?limit=50` in the URL to show more cards (e.g. <code>/dashboard?limit=50</code>).
+  </div>
+</div>
+{% endblock %}

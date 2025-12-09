@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow">
+  <h2>Import JSON</h2>
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept="application/json" required />
+    <div class="mt-3"><button class="px-3 py-1 bg-indigo-600 text-white rounded">Upload</button></div>
+  </form>
+</div>
+{% endblock %}

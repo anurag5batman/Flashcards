@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow">
+  <h2>History for card {{ card.id }}</h2>
+  <div><strong>Q:</strong> {{ card.question }}</div>
+  {% if revs %}
+    <table class="w-full mt-4">
+      <thead><tr><th>When</th><th>Quality</th><th>Prior</th><th>New</th></tr></thead>
+      <tbody>
+        {% for r in revs %}
+        <tr>
+          <td>{{ r.when }}</td>
+          <td>{{ r.quality }}</td>
+          <td>{{ r.prior_reps }} / {{ r.prior_interval }}d / {{ '%.2f'|format(r.prior_easiness) }}</td>
+          <td>{{ r.new_reps }} / {{ r.new_interval }}d / {{ '%.2f'|format(r.new_easiness) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="mt-4">No reviews yet.</div>
+  {% endif %}
+  <div class="mt-4"><a href="{{ url_for('index') }}" class="px-3 py-1 border rounded">Back</a></div>
+</div>
+{% endblock %}
