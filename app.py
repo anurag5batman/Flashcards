@@ -4,6 +4,8 @@ from sqlalchemy import or_, inspect, text
 import json, io, random, re
 from datetime import datetime, timedelta
 import os
+from datetime import datetime, timedelta
+from flask import request, jsonify
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -290,49 +292,106 @@ def study_page():
     return render_template('study.html', cards=cards_d, subjects=all_subjects, tags=all_tags, selected_mode=mode, sel_subject=subject, sel_tag=tag)
 
 
-# API: receive review result from client
 @app.route('/study/review', methods=['POST'])
 def study_review():
-    payload = request.get_json(force=True, silent=True)
+    """
+    Accepts JSON:
+      { "card_id": <int>, "action": "known"|"unknown"|"snooze", "snooze_days": <int, optional> }
+    """
+    payload = request.get_json(silent=True)
     if not payload:
-        return jsonify({"error":"invalid json"}), 400
+        return jsonify({"error": "invalid or missing JSON payload"}), 400
 
     cid = payload.get('card_id')
-    action = payload.get('action')  # "known", "unknown", or "snooze"
-    snooze_days = int(payload.get('snooze_days') or 0)
+    action = (payload.get('action') or '').lower()
+    snooze_days = payload.get('snooze_days', 0)
 
+    # validate card id
     try:
         cid = int(cid)
     except Exception:
-        return jsonify({"error":"invalid card id"}), 400
+        return jsonify({"error": "invalid card_id"}), 400
 
     card = Flashcard.query.get(cid)
     if not card:
-        return jsonify({"error":"card not found"}), 404
+        return jsonify({"error": "card not found"}), 404
 
-    prior_reps = card.reps
-    prior_interval = card.interval
-    prior_easiness = float(card.easiness or 2.5)
+    # safe snapshot of existing meta
+    prior_reps = getattr(card, 'reps', None)
+    prior_interval = getattr(card, 'interval', None)
+    prior_easiness = float(getattr(card, 'easiness', 2.5))
 
-    if action == 'snooze' and snooze_days > 0:
-        card.next_review = datetime.utcnow() + timedelta(days=snooze_days)
-        db.session.add(card); db.session.commit()
-        rv = Review(card_id=card.id, quality=0, prior_reps=prior_reps, prior_interval=prior_interval, prior_easiness=prior_easiness,
-                    new_reps=card.reps, new_interval=card.interval, new_easiness=card.easiness)
-        db.session.add(rv); db.session.commit()
-        return jsonify({"status":"ok", "next_review": card.next_review.isoformat() if card.next_review else None})
-    else:
-        # map action to quality
-        quality = 5 if action == 'known' else 2
-        prior_snapshot, new_snapshot = sm2_update(card, quality)
-        db.session.add(card); db.session.commit()
-        rv = Review(card_id=card.id, quality=quality, prior_reps=prior_reps, prior_interval=prior_interval,
-                    prior_easiness=prior_easiness, new_reps=new_snapshot['reps'], new_interval=new_snapshot['interval'],
-                    new_easiness=new_snapshot['easiness'])
-        db.session.add(rv); db.session.commit()
-        return jsonify({"status":"ok", "next_review": card.next_review.isoformat() if card.next_review else None,
-                        "new_meta": new_snapshot})
+    try:
+        if action == 'snooze':
+            # validate snooze_days
+            try:
+                snooze_days = int(snooze_days)
+            except Exception:
+                return jsonify({"error": "invalid snooze_days"}), 400
+            if snooze_days <= 0:
+                return jsonify({"error": "snooze_days must be > 0"}), 400
 
+            # set next_review to UTC now + snooze_days
+            card.next_review = datetime.utcnow() + timedelta(days=snooze_days)
+            db.session.add(card)
+            db.session.commit()
+
+            # record a Review row if you keep Review history (optional)
+            try:
+                rv = Review(card_id=card.id, quality=0,
+                            prior_reps=prior_reps, prior_interval=prior_interval, prior_easiness=prior_easiness,
+                            new_reps=getattr(card, 'reps', None), new_interval=getattr(card, 'interval', None),
+                            new_easiness=getattr(card, 'easiness', None))
+                db.session.add(rv)
+                db.session.commit()
+            except Exception:
+                # don't fail the request if review history can't be written
+                db.session.rollback()
+
+            return jsonify({
+                "status": "ok",
+                "action": "snooze",
+                "card_id": card.id,
+                "next_review": card.next_review.isoformat()
+            })
+
+        elif action in ('known', 'unknown'):
+            # map action to quality (customize if you like)
+            quality = 5 if action == 'known' else 2
+            # rely on sm2_update existing helper which should update card.* fields
+            new_snapshot = sm2_update(card, quality)
+            db.session.add(card)
+            db.session.commit()
+
+            # record review
+            try:
+                rv = Review(card_id=card.id, quality=quality,
+                            prior_reps=prior_reps, prior_interval=prior_interval, prior_easiness=prior_easiness,
+                            new_reps=new_snapshot.get('reps'), new_interval=new_snapshot.get('interval'),
+                            new_easiness=new_snapshot.get('easiness'))
+                db.session.add(rv)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+            return jsonify({
+                "status": "ok",
+                "action": action,
+                "card_id": card.id,
+                "next_review": card.next_review.isoformat() if card.next_review else None,
+                "new_meta": new_snapshot
+            })
+        else:
+            return jsonify({"error": "unknown action"}), 400
+
+    except Exception as e:
+        # log server-side error if you have logger, then return 500
+        try:
+            app.logger.exception("study_review failure")
+        except Exception:
+            pass
+        db.session.rollback()
+        return jsonify({"error": "internal server error", "detail": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)

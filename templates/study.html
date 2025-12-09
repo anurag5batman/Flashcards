@@ -252,7 +252,7 @@ function shuffleCards(){
   }
 }
 
-/* Server review call (same endpoint) */
+// improved sendReview: returns parsed JSON or throws error
 async function sendReview(cardId, action, snooze_days=0){
   try{
     const res = await fetch("{{ url_for('study_review') }}", {
@@ -260,12 +260,21 @@ async function sendReview(cardId, action, snooze_days=0){
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({card_id: cardId, action: action, snooze_days: snooze_days})
     });
-    return await res.json();
+    const data = await res.json();
+    if(!res.ok){
+      // show an alert and return failure object
+      const msg = (data && data.error) ? data.error : "Server error";
+      alert("Could not save review: " + msg);
+      return { ok: false, data };
+    }
+    return { ok: true, data };
   }catch(e){
     console.error("review post failed", e);
-    return { error: String(e) };
+    alert("Network error while saving review: " + e.message);
+    return { ok: false, data: { error: e.message } };
   }
 }
+
 
 /* Session actions (Known/Unknown/Snooze) */
 document.getElementById('knownBtn').addEventListener('click', async ()=>{
@@ -295,17 +304,33 @@ document.getElementById('snoozeMenuBtn').addEventListener('click', ()=> { docume
 document.querySelectorAll('.snoozeOpt').forEach(b=>{
   b.addEventListener('click', async (ev)=>{
     if(cards.length===0) return;
-    manualAction();
+    manualAction(); // stop autoplay timers
     const days = parseInt(ev.currentTarget.dataset.days);
     const c = cards[idx];
-    sessionStats.push({action:'snooze', card_id:c.id, snooze_days: days, ts: Date.now()});
-    await sendReview(c.id, 'snooze', days);
+
+    // optimistic UI: show a small "saving..." indicator (optional)
+    const res = await sendReview(c.id, 'snooze', days);
+    if(!res.ok){
+      // server rejected — don't remove card
+      return;
+    }
+
+    // success — update local card meta if server returned next_review
+    try {
+      if(res.data && res.data.next_review){
+        c.next_review = res.data.next_review;
+      }
+    } catch(e){}
+
+    // remove snoozed card locally so it doesn't appear again during this session
     cards.splice(idx,1);
+
     document.getElementById('snoozeMenu').classList.add('hidden');
     if(cards.length===0){ renderCard(0); return; }
     renderCard(idx);
   });
 });
+
 
 /* Manual action cancels timers and marks autoplay to resume if enabled */
 function manualAction(){
